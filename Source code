@@ -1,0 +1,259 @@
+#include "project_config.h"
+#include "vtkRenderer.h"
+#include "vtkRenderWindow.h"
+#include "vtkRenderWindowInteractor.h"
+#include "vtkVolume16Reader.h"
+#include "vtkPolyDataMapper.h"
+#include "vtkActor.h"
+#include "vtkOutlineFilter.h"
+#include "vtkCamera.h"
+#include "vtkStripper.h"
+#include "vtkContourFilter.h"
+#include "vtkProperty.h"
+#include "vtkDICOMImageReader.h"
+#include "vtkMarchingCubes.h"
+#include "vtkVolumeRayCastMapper.h"
+#include "vtkVolumeRayCastCompositeFunction.h"
+#include "vtkVolume.h"
+#include "vtkVolumeProperty.h"
+#include "vtkPiecewiseFunction.h" 
+#include "vtkColorTransferFunction.h"
+//#include "SaveImage.h"
+#include "vtkTIFFReader.h"
+#include "vtkBoxWidget.h"
+#include "vtkTransform.h"
+#include "vtkCommand.h"
+#include "vtkPlane.h"
+#include "vtkImageShiftScale.h"
+#include "vtkFixedPointVolumeRayCastMapper.h"
+#include "vtkPlanes.h"
+#include "iostream"
+#include "vtkSmartPointer.h"
+#include"vtkImageCast.h"
+#include "vtkFiniteDifferenceGradientEstimator.h"
+//using namespace std;
+ #include <vtkSmartPointer.h>    
+
+class vtkMyCallback : public vtkCommand
+{//Set/Get the InsideOut flag. When off, the normals
+	//point out of the box. When on, the normals point into the hexahedron. InsideOut is off by default. 
+public:
+  static vtkMyCallback *New()
+    { return new vtkMyCallback; }
+  virtual void Execute(vtkObject *caller, unsigned long, void*)
+    {
+     vtkSmartPointer <vtkBoxWidget> widget = reinterpret_cast<vtkBoxWidget*>(caller);
+     widget->GetPlanes(planes);
+     this->volume->RemoveAllClippingPlanes();
+     //planes->GetPlane(0,plane0);
+     //planes->GetPlane(1,plane1);
+     //planes->GetPlane(2,plane2);
+     //planes->GetPlane(3,plane3);
+     //planes->GetPlane(4,plane4);
+     //planes->GetPlane(5,plane5);
+     volume->AddClippingPlane(plane0);
+     volume->AddClippingPlane(plane1);
+     volume->AddClippingPlane(plane2);
+     volume->AddClippingPlane(plane3);
+     volume->AddClippingPlane(plane4);
+     volume->AddClippingPlane(plane5);
+    }
+    //vtkFixedPointVolumeRayCastMapper *volume;
+    vtkVolumeRayCastMapper *volume;
+    vtkPlanes *planes;
+    vtkPlane *plane0;
+    vtkPlane *plane1;
+    vtkPlane *plane2;
+    vtkPlane *plane3;
+    vtkPlane *plane4;
+    vtkPlane *plane5;
+    double a[3];
+};
+
+
+void main( int argc, char *argv[] )
+{
+  // create the renderer stuff
+      vtkSmartPointer<vtkRenderer> aRenderer =vtkSmartPointer<vtkRenderer>::New();
+      vtkRenderWindow *renWin = vtkRenderWindow::New();
+      renWin->AddRenderer(aRenderer);
+     vtkSmartPointer<vtkRenderWindowInteractor> iren = vtkSmartPointer<vtkRenderWindowInteractor>::New();
+      iren->SetRenderWindow(renWin);
+
+
+      
+      vtkSmartPointer<vtkVolume16Reader> reader=vtkSmartPointer<vtkVolume16Reader>::New();
+      reader->SetDataDimensions (64,64);
+      reader->SetImageRange (1,93);
+      reader->SetDataByteOrderToLittleEndian();
+      reader->SetFilePrefix("headsq\\quarter");
+	// reader->SetFilePrefix("headsq\\");
+	  reader->SetDataSpacing (3.2,3.2,1.5);
+	  /*
+	vtkSmartPointer<vtkDICOMImageReader> reader=vtkSmartPointer<vtkDICOMImageReader>::New();
+     reader->SetDataByteOrderToLittleEndian();
+   reader->SetFilePrefix( VTK_DATA_ROOT "DICOM\\brain_");
+    reader->SetFilePattern("%s%d.dcm");
+//	reader->SetImageRange(001,020);
+	// reader->SetDataDimensions(128,128);
+      reader->SetDataSpacing ( 0.429688,0.429688,1.25);*/
+     
+      vtkSmartPointer<vtkImageCast> readerImageCast = vtkSmartPointer<vtkImageCast>::New();
+      readerImageCast->SetInput((vtkDataObject *)reader->GetOutput());
+      readerImageCast->SetOutputScalarTypeToUnsignedShort();
+
+    /*
+    vtkImageData *data = reader->GetOutput();
+    vtkImageShiftScale *scale =vtkImageShiftScale::New();
+    scale->SetInput((vtkDataObject *)data);
+    scale->SetOutputScalarTypeToUnsignedChar();
+    scale->Update();
+	*/ 
+    vtkSmartPointer<vtkVolumeRayCastCompositeFunction> compositeFunction = vtkSmartPointer<vtkVolumeRayCastCompositeFunction>::New();
+    compositeFunction->SetCompositeMethodToInterpolateFirst();
+ 
+    vtkSmartPointer<vtkFiniteDifferenceGradientEstimator> gradest = vtkSmartPointer<vtkFiniteDifferenceGradientEstimator>::New();
+    vtkVolumeRayCastMapper *vmp = vtkVolumeRayCastMapper::New();
+    vmp->SetVolumeRayCastFunction(compositeFunction); 
+    vmp->SetInput(reader->GetOutput());
+    vmp->SetGradientEstimator(gradest);
+ 
+       /*vtkFixedPointVolumeRayCastMapper *vmp =vtkFixedPointVolumeRayCastMapper::New ();
+        vmp->SetVolumeRayCastFunction (compositeFunction);
+       vmp->SetInput (reader->GetOutput ());
+       */
+
+
+	     
+      //Defines a 1D piecewise function.
+      //Defines a piecewise linear function mapping. Used for transfer functions in volume rendering.
+      // Defines a piecewise function mapping. This mapping allows the addition of control points, and allows
+      //the user to control the function between the control points. A piecewise hermite curve is used between 
+      //control points, based on the sharpness and midpoint parameters. A sharpness of 0 yields a piecewise linear
+     //function and a sharpness of 1 yields a piecewise constant function. The midpoint is the normalized distance
+     //between control points at which the curve reaches the median Y value. The midpoint and sharpness values
+    //specified when adding a node are used to control the transition to the next node
+    //(the last node's values are ignored) Outside the range of nodes, the values are 0 if Clamping is off, or the 
+    //nearest node point if Clamping is on. Using the legacy methods for adding points (which do not have Sharpness 
+    //and Midpoint parameters) will default to Midpoint = 0.5 (halfway between the control points) and Sharpness = 0.0 
+    //(linear).
+   
+
+
+ 
+    vtkSmartPointer<vtkPiecewiseFunction> opacityTransferFunction = vtkSmartPointer<vtkPiecewiseFunction>::New();
+       /* 
+        opacityTransferFunction->AddPoint(  -1000, 0.0 );
+        opacityTransferFunction->AddPoint( -600, 0.0 );
+        opacityTransferFunction->AddPoint( -300, 1.0 );
+        opacityTransferFunction->AddPoint( -100, 1.0 );
+      */
+	 
+     opacityTransferFunction->AddPoint(70.0, 0.0);
+     opacityTransferFunction->AddPoint(599.0, 0);
+     opacityTransferFunction->AddPoint(600.0, 0);
+     opacityTransferFunction->AddPoint(1195.0, 0);
+     opacityTransferFunction->AddPoint(1200, .2);
+     opacityTransferFunction->AddPoint(1300, .3);
+     opacityTransferFunction->AddPoint(2000, .3);
+     opacityTransferFunction->AddPoint(4095.0, 1.0);
+   
+   
+     vtkSmartPointer<vtkColorTransferFunction> colorTransferFunction = vtkSmartPointer<vtkColorTransferFunction>::New();
+     colorTransferFunction->AddRGBPoint(  -800, 0.0, 0.0, 0.0 );
+     colorTransferFunction->AddRGBPoint( -300, 1, 1, 1 );
+     colorTransferFunction->AddRGBPoint( -100,  197.0/256, 170.0/256,124.0/256);
+
+
+     //    colorTransferFunction->AddRGBPoint(    255.0, 0.1, .49, .25);
+     //    colorTransferFunction->AddRGBPoint(    1855.0, 0.8, 0.8, 0.1);
+	/*
+    colorTransferFunction->AddRGBPoint(0.0, 1.0, 1.0, 1.0);
+    colorTransferFunction->AddRGBPoint(600.0, 0.5, 1.0, 0.5);
+    colorTransferFunction->AddRGBPoint(1280.0, 0.2, 0.9, 0.3);
+    colorTransferFunction->AddRGBPoint(1960.0, 0.27, 0.81, 0.1);
+    colorTransferFunction->AddRGBPoint(4095.0, 0.5, 0.5, 0.5);
+	*/
+
+
+
+    vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+    volumeProperty->SetColor(colorTransferFunction);
+    volumeProperty->SetScalarOpacity(opacityTransferFunction);
+    volumeProperty->ShadeOn();
+    volumeProperty->SetInterpolationTypeToLinear();
+    volumeProperty->SetAmbient(0.2);
+    volumeProperty->SetDiffuse(0.9);
+    volumeProperty->SetSpecular(0.2);
+    volumeProperty->SetSpecularPower(10);	
+
+
+    vtkSmartPointer<vtkVolume> volume = vtkSmartPointer<vtkVolume>::New();
+    volume->SetMapper(vmp);
+    volume->SetProperty(volumeProperty);
+	volume->SetPosition(0,0,0);
+    volume->SetOrientation(0,0,0);
+
+
+  // get an outline
+  //vtkOutlineFilter *outlineData = vtkOutlineFilter::New();
+  //  outlineData->SetInput((vtkDataSet *)scale->GetOutput());
+  //vtkPolyDataMapper *mapOutline = vtkPolyDataMapper::New();
+  //  mapOutline->SetInput(outlineData->GetOutput());
+  //vtkActor *outline = vtkActor::New();
+  //  outline->SetMapper(mapOutline);
+  //  outline->GetProperty()->SetColor(0,0,0);
+
+  // create a camera with the correct view up
+    vtkSmartPointer<vtkCamera> aCamera = vtkSmartPointer<vtkCamera>::New();
+    aCamera->SetViewUp (0, 0, -1);
+    aCamera->SetPosition (0, 1, 0);
+    aCamera->SetFocalPoint (0, 0, 0);
+
+     // now, tell the renderer our actors
+    
+    aRenderer->AddVolume(volume); 
+    aRenderer->SetActiveCamera(aCamera);
+    aRenderer->ResetCamera();
+    aCamera->Dolly(1.5);
+    aRenderer->SetBackground(0,0,0);
+    aRenderer->ResetCameraClippingRange();
+
+  
+      // interact with data
+
+     vtkSmartPointer<vtkBoxWidget> box=vtkSmartPointer<vtkBoxWidget>::New();
+     box->SetInteractor(iren);
+     box-> SetPlaceFactor(1);
+     //box->SetInput((vtkDataSet *)reader->GetOutput());
+     box->SetProp3D(volume);
+     box->PlaceWidget();
+     box->InsideOutOn();
+     box->GetOutlineProperty()->SetRepresentationToSurface();
+     box->GetOutlineProperty()->SetOpacity(0.1);
+
+
+     vtkSmartPointer<vtkMyCallback> callback = vtkSmartPointer<vtkMyCallback>::New();
+     callback->volume=vmp;
+     vtkPlanes *planes=vtkPlanes::New();
+     callback->planes=planes;
+     callback->plane0=vtkPlane::New();
+     callback->plane1=vtkPlane::New();
+     callback->plane2=vtkPlane::New();
+     callback->plane3=vtkPlane::New();
+     callback->plane4=vtkPlane::New();
+     callback->plane5=vtkPlane::New();
+     //box->ScalingEnabledOff();
+     box->On();
+    box->AddObserver(vtkCommand::InteractionEvent, callback);
+
+    renWin->SetSize(300, 300);
+    renWin->Render();
+    iren->Start();  
+
+
+}
+
+
+
+ 
